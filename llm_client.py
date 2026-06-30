@@ -1,13 +1,17 @@
-from typing import Dict
+from openrouter import OpenRouter
 
 class LLMClient:
     def __init__(self, provider:str, api_key:str = None):
         self.provider = provider
         self.api_key = api_key
-        self.history = []
     
     async def complete(self, prompt: str, max_tokens: int = 512) -> str:
-        self.history.append({"role": "user", "content": prompt})
-        response = f"got prompt {prompt}"
-        self.history.append({"role": "agent", "content": response})
-        return response
+        with OpenRouter(api_key=self.api_key) as client:
+            response = client.chat.send(
+                model=self.provider,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ],
+            )
+            print(response.choices[0].message.content)
+        return response.choices[0].message.content
