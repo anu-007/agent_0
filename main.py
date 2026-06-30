@@ -1,34 +1,42 @@
 import argparse
 import asyncio
+import os
+from llm_client import LLMClient
+from dotenv import load_dotenv
 
-class AgentServer:
-    def __init__(self, host: str ="localhost", port: int = 3000, provider: str = "anthropic-haiku"):
-        self.host = host
-        self.port = port
-        self.provider = provider
+load_dotenv()
 
-    def handle_task(self):
-        pass
+async def interactive(llm_client):
+    print("Agent 0 ready. Type 'exit' to quit.")
+    while True:
+        try:
+            prompt = input("> ")
+        except (EOFError, KeyboardInterrupt):
+            break
+        if prompt.strip().lower() in {"exit", "quit"}:
+            break
+        response = await llm_client.complete(prompt)
+        print(response)
 
-    async def start(self):
-        server = await asyncio.start_server(self.handle_task, self.host, self.port)
-
-        async with server:
-            print("agent 0 is running")
-            await server.serve_forever()
-    
 
 def main():
     parser = argparse.ArgumentParser(description="Agent 0, a intern coding agent")
     parser.add_argument('--provider', type=str, default="anthropic-haiku", help="llm model")
-    parser.add_argument('--port', type=int, default=3000, help='Port to run the server on (default: 3000)')
-
+    parser.add_argument('--key', type=str, default=None, help='api key for the llm')
     args = parser.parse_args()
-    agent_server = AgentServer(host="localhost", port=args.port)
+
+    provider = args.provider or os.environ.get("LLM_PROVIDER", "anthropic-haiku")
+    api_key = args.key or os.environ.get("LLM_API_KEY")
+
+    if not api_key:
+        raise SyntaxError("ERROR: API key not found, Use --key, LLM_API_KEY env var")
+
+    llm_client = LLMClient(provider=provider, api_key=api_key)
+    
     try:
-        asyncio.run(agent_server.start())
+        asyncio.run(interactive(llm_client))
     except KeyboardInterrupt:
-        pass
+        print("\nBye !!")
 
 if __name__ == "__main__":
     main()
