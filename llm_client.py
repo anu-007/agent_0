@@ -13,5 +13,4 @@ class LLMClient:
                     {"role": "user", "content": prompt}
                 ],
             )
-            print(response.choices[0].message.content)
         return response.choices[0].message.content

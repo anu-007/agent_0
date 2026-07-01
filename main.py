@@ -30,7 +30,7 @@ def main():
     api_key = args.key or os.environ.get("LLM_API_KEY")
 
     if not api_key:
-        raise SyntaxError("ERROR: API key not found, Use --key, LLM_API_KEY env var")
+        raise AttributeError("ERROR: API key not found, Use --key, LLM_API_KEY env var")
 
     coding_agent = CodingAgent(LLMClient(provider=provider, api_key=api_key))
     
