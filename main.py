@@ -16,8 +16,11 @@ async def interactive(coding_agent):
             break
         if instruction.strip().lower() in {"exit", "quit"}:
             break
-        response = await coding_agent.synthesize_and_run(instruction)
-        print(response)
+        try:
+            response = await coding_agent.synthesize_and_run(instruction)
+            print(response)
+        except Exception as e:
+            print(f"Error: {e}")
 
 
 def main():
@@ -33,11 +36,13 @@ def main():
         raise AttributeError("ERROR: API key not found, Use --key, LLM_API_KEY env var")
 
     coding_agent = CodingAgent(LLMClient(provider=provider, api_key=api_key))
-    
+
     try:
         asyncio.run(interactive(coding_agent))
     except KeyboardInterrupt:
         print("\nBye !!")
+    except Exception as e:
+        print(f"Fatal error: {e}")
 
 if __name__ == "__main__":
     main()

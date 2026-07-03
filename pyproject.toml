@@ -10,5 +10,6 @@ requires-python = ">=3.11"
 dependencies = [
     "asyncio>=4.0.0",
     "dotenv>=0.9.9",
+    "httpx>=0.28.1",
     "openrouter>=0.10.8",
 ]

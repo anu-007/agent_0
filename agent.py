@@ -1,70 +1,73 @@
-import asyncio
+import json
+from typing import Any, Dict, List, Optional
 from llm_client import LLMClient
-from sandbox import run_python_code
-from helpers.code_parser import extract_code
+from tools import create_default_registry
+from tools.registry import ToolRegistry
+from helpers.tool_parser import parse_tool_call
+
 
 class CodingAgent:
-    def __init__(self, llm: LLMClient):
+    def __init__(self, llm: LLMClient, registry: Optional[ToolRegistry] = None):
         self.llm = llm
-        self.history = []
+        self.registry = registry or create_default_registry(llm)
+        self.system_prompt = self._build_system_prompt()
 
-    async def synthesize_and_run(self, instruction: str, max_retries: int = 3):
-        self.history.append({"role": "user", "content": instruction})
+    def _build_system_prompt(self) -> str:
+        return (
+            "You are a helpful coding assistant. You have access to the following tools. "
+            "For each step, respond with a single JSON object in this exact format:\n"
+            '{"thought": "your reasoning", "tool": "tool_name", "args": {"arg_name": "value"}}\n\n'
+            "Available tools:\n"
+            f"{self.registry.describe()}\n\n"
+            "When the task is complete, call the `final_answer` tool with the final code, "
+            "success status, stdout, stderr, and the number of attempts. "
+            "If a test run fails, use the `repair_code` tool to fix it."
+        )
 
-        # Generate a single script that contains both the implementation
-        # and a self-testing __main__ block.
-        code = extract_code(await self.generate_code(instruction))
+    async def run(self, instruction: str, max_iterations: int = 10) -> Dict[str, Any]:
+        messages: List[Dict[str, str]] = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": instruction},
+        ]
 
-        last_stdout, last_stderr = "", ""
-        for attempt in range(max_retries + 1):
-            rc, last_stdout, last_stderr = await self._run_in_sandbox(code)
-            if rc == 0 and "PASS" in last_stdout and "FAIL" not in last_stdout:
-                return {
-                    "code": code,
-                    "success": True,
-                    "attempts": attempt + 1,
-                    "stdout": last_stdout,
-                    "stderr": last_stderr,
-                }
+        for iteration in range(max_iterations):
+            response = await self.llm.chat(messages)
+            tool_call = parse_tool_call(response)
 
-            if attempt < max_retries:
-                code = extract_code(
-                    await self.repair_code(code, last_stdout, last_stderr, instruction)
-                )
+            if "error" in tool_call:
+                messages.append({"role": "assistant", "content": response})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"Invalid tool call: {tool_call['error']}. "
+                        "Please respond with valid JSON using the required format."
+                    ),
+                })
+                continue
+
+            if tool_call["tool"] == "final_answer":
+                return await self.registry.call(tool_call["tool"], tool_call["args"])
+
+            observation = await self.registry.call(tool_call["tool"], tool_call["args"])
+
+            messages.append({"role": "assistant", "content": json.dumps(tool_call)})
+            observation_msg = f"Observation: {json.dumps(observation)}"
+            if (
+                tool_call["tool"] == "run_tests"
+                and observation.get("returncode") == 0
+                and "PASS" in observation.get("stdout", "")
+            ):
+                observation_msg += "\nHint: tests passed. Call final_answer when ready."
+            messages.append({"role": "user", "content": observation_msg})
 
         return {
-            "code": code,
+            "error": "Max iterations reached",
+            "code": "",
             "success": False,
-            "attempts": max_retries + 1,
-            "stdout": last_stdout,
-            "stderr": last_stderr,
+            "stdout": "",
+            "stderr": "",
+            "attempts": max_iterations,
         }
 
-    async def _run_in_sandbox(self, code: str, timeout: int = 1000):
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, run_python_code, code, timeout)
-
-    async def generate_code(self, instruction: str):
-        prompt = (
-            "You are a helpful Python coder. Implement the following task in a single "
-            "self-contained Python script. Include a `if __name__ == '__main__':` block "
-            "that runs assert-based tests and prints 'PASS' if all tests pass, otherwise "
-            "prints 'FAIL'.\n\n"
-            f"Task: {instruction}"
-        )
-        code = await self.llm.complete(prompt)
-        return code
-
-    async def repair_code(self, code: str, stdout: str, stderr: str, instruction: str):
-        prompt = (
-            "You are a helpful Python coder. The following script was written for a task "
-            "but failed when run. Fix the script so it satisfies the task and its tests pass. "
-            "Return the complete corrected Python script, including the tests in __main__.\n\n"
-            f"Task: {instruction}\n\n"
-            f"Script:\n```python\n{code}\n```\n\n"
-            f"Stdout:\n{stdout}\n\n"
-            f"Stderr:\n{stderr}\n\n"
-            "Return the complete corrected Python script."
-        )
-        code_fix = await self.llm.complete(prompt)
-        return code_fix
+    async def synthesize_and_run(self, instruction: str, max_retries: int = 3) -> Dict[str, Any]:
+        return await self.run(instruction, max_iterations=max_retries + 1)
