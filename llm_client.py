@@ -26,6 +26,9 @@ class LLMClient:
             "model": self.provider,
             "messages": messages,
             "max_tokens": max_tokens,
+            "reasoning": {
+                "max_tokens": 256
+            }
         }
         async with httpx.AsyncClient() as client:
             response = await client.post(

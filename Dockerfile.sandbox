@@ -1,0 +1,14 @@
+FROM python:3.11-slim
+
+# Create a non-root user to run submitted code.
+RUN groupadd -r sandbox && useradd -r -g sandbox -d /sandbox -s /sbin/nologin sandbox
+
+# Install only essential build dependencies if needed by generated code.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /sandbox
+
+# Run as sandbox user by default.
+USER sandbox

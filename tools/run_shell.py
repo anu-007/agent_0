@@ -1,12 +1,13 @@
 import shlex
-import subprocess
+from pathlib import Path
 from typing import Any, Dict, Set
 from tools.base import Tool
+from sandbox import run_in_container
 
 
 class RunShellTool(Tool):
     name = "run_shell"
-    description = "Run a restricted shell command."
+    description = "Run a restricted shell command inside the Docker sandbox."
     parameters = {
         "type": "object",
         "properties": {
@@ -28,17 +29,16 @@ class RunShellTool(Tool):
                 "stderr": f"Command not allowed: {parts[0] if parts else ''}",
             }
         try:
-            completed = subprocess.run(
+            returncode, stdout, stderr = await run_in_container(
                 parts,
-                capture_output=True,
-                text=True,
-                timeout=30,
-                check=False,
+                timeout_sec=30,
+                volumes=[f"{Path.cwd()}:/workspace:ro"],
+                workdir="/workspace",
             )
             return {
-                "returncode": completed.returncode,
-                "stdout": completed.stdout,
-                "stderr": completed.stderr,
+                "returncode": returncode,
+                "stdout": stdout,
+                "stderr": stderr,
             }
         except Exception as e:
             return {"returncode": -1, "stdout": "", "stderr": str(e)}
