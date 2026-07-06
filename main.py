@@ -4,8 +4,10 @@ import os
 from agent import CodingAgent
 from dotenv import load_dotenv
 from llm_client import LLMClient
+from tools import create_default_registry
 
 load_dotenv()
+
 
 async def interactive(coding_agent):
     print("Agent 0 ready. Type 'exit' to quit.")
@@ -24,7 +26,7 @@ async def interactive(coding_agent):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Agent 0, a intern coding agent")
+    parser = argparse.ArgumentParser(description="Agent 0, an intern coding agent")
     parser.add_argument('--provider', type=str, default="nvidia/nemotron-3-ultra-550b-a55b:free", help="llm model")
     parser.add_argument('--key', type=str, default=None, help='api key for the llm')
     args = parser.parse_args()
@@ -35,7 +37,9 @@ def main():
     if not api_key:
         raise AttributeError("ERROR: API key not found, Use --key, LLM_API_KEY env var")
 
-    coding_agent = CodingAgent(LLMClient(provider=provider, api_key=api_key))
+    llm = LLMClient(provider=provider, api_key=api_key)
+    registry = create_default_registry(llm)
+    coding_agent = CodingAgent(llm, registry)
 
     try:
         asyncio.run(interactive(coding_agent))
@@ -43,6 +47,7 @@ def main():
         print("\nBye !!")
     except Exception as e:
         print(f"Fatal error: {e}")
+
 
 if __name__ == "__main__":
     main()

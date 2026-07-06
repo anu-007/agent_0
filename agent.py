@@ -69,5 +69,5 @@ class CodingAgent:
             "attempts": max_iterations,
         }
 
-    async def synthesize_and_run(self, instruction: str, max_retries: int = 3) -> Dict[str, Any]:
-        return await self.run(instruction, max_iterations=max_retries + 1)
+    async def synthesize_and_run(self, instruction: str, max_iterations: int = 10) -> Dict[str, Any]:
+        return await self.run(instruction, max_iterations=max_iterations)

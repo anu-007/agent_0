@@ -1,7 +1,6 @@
 import json
 from typing import List, Dict
 import httpx
-from openrouter import OpenRouter
 
 
 class LLMClient:
@@ -23,25 +22,6 @@ class LLMClient:
         )
 
     async def chat(self, messages: List[Dict[str, str]], max_tokens: int = 512) -> str:
-        try:
-            return await self._chat_sdk(messages, max_tokens)
-        except Exception as e:
-            # The openrouter SDK sometimes fails to parse certain model responses.
-            # Fall back to a direct HTTP call using httpx.
-            print(f"[LLMClient] SDK call failed: {e}. Falling back to httpx.")
-            return await self._chat_http(messages, max_tokens)
-
-    async def _chat_sdk(self, messages: List[Dict[str, str]], max_tokens: int) -> str:
-        with OpenRouter(api_key=self.api_key) as client:
-            response = client.chat.send(
-                model=self.provider,
-                messages=messages,
-                max_tokens=max_tokens,
-            )
-            print(response)
-        return response.choices[0].message.content
-
-    async def _chat_http(self, messages: List[Dict[str, str]], max_tokens: int) -> str:
         payload = {
             "model": self.provider,
             "messages": messages,
