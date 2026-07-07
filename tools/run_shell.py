@@ -1,4 +1,6 @@
+import asyncio
 import shlex
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict, Set
 from tools.base import Tool
@@ -29,12 +31,15 @@ class RunShellTool(Tool):
                 "stderr": f"Command not allowed: {parts[0] if parts else ''}",
             }
         try:
-            returncode, stdout, stderr = await run_in_container(
+            loop = asyncio.get_running_loop()
+            runner = partial(
+                run_in_container,
                 parts,
                 timeout_sec=30,
                 volumes=[f"{Path.cwd()}:/workspace:ro"],
                 workdir="/workspace",
             )
+            returncode, stdout, stderr = await loop.run_in_executor(None, runner)
             return {
                 "returncode": returncode,
                 "stdout": stdout,

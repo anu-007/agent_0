@@ -26,9 +26,6 @@ class LLMClient:
             "model": self.provider,
             "messages": messages,
             "max_tokens": max_tokens,
-            "reasoning": {
-                "max_tokens": 256
-            }
         }
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -37,7 +34,16 @@ class LLMClient:
                 json=payload,
                 timeout=60,
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                body = response.text or "<empty body>"
+                raise RuntimeError(
+                    f"OpenRouter request failed: {e.response.status_code} {e.response.reason_phrase}\n"
+                    f"URL: {e.response.url}\n"
+                    f"Response body: {body}\n"
+                    f"Model: {self.provider}"
+                ) from e
             data = response.json()
             if "choices" not in data or not data["choices"]:
                 raise ValueError(f"OpenRouter returned no choices: {json.dumps(data)}")

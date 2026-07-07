@@ -27,11 +27,11 @@ async def interactive(coding_agent):
 
 def main():
     parser = argparse.ArgumentParser(description="Agent 0, an intern coding agent")
-    parser.add_argument('--provider', type=str, default="nvidia/nemotron-3-ultra-550b-a55b:free", help="llm model")
+    parser.add_argument('--provider', type=str, default="tencent/hy3:free", help="llm model")
     parser.add_argument('--key', type=str, default=None, help='api key for the llm')
     args = parser.parse_args()
 
-    provider = args.provider or os.environ.get("LLM_PROVIDER", "nvidia/nemotron-3-ultra-550b-a55b:free")
+    provider = args.provider or os.environ.get("LLM_PROVIDER", "tencent/hy3:free")
     api_key = args.key or os.environ.get("LLM_API_KEY")
 
     if not api_key:
