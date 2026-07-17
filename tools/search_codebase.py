@@ -15,7 +15,7 @@ class SearchCodebaseTool(Tool):
     }
 
     def __init__(self, workspace: Optional[Path] = None):
-        self.workspace = workspace or Path.cwd().resolve()
+        self.workspace = (workspace or Path.cwd()).resolve()
 
     async def execute(self, query: str) -> Dict[str, Any]:
         matches: List[Dict[str, Any]] = []

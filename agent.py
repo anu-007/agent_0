@@ -104,21 +104,45 @@ class CodingAgent:
             "attempts": 1,
         }
 
-    def _build_simple_prompt(self, instruction: str, context: str) -> str:
+    def _build_simple_prompt(
+        self,
+        instruction: str,
+        context: str,
+        original_content: str = "",
+        is_edit: bool = False,
+    ) -> str:
         parts = []
         if context:
             parts.append(context)
+        if original_content:
+            parts.append(
+                "Current file content (modify this, do not change unrelated parts):\n"
+                f"```python\n{original_content}\n```"
+            )
         parts.append(f"Task: {instruction}")
-        parts.append(
-            "Write or edit Python code to satisfy the task. "
-            "Put the complete code in a markdown Python code block (```python ... ```)."
-        )
+        if is_edit:
+            parts.append(
+                "Edit the current file content above to satisfy the task. "
+                "Put the complete updated code in a markdown Python code block (```python ... ```)."
+            )
+        else:
+            parts.append(
+                "Write new Python code to satisfy the task. "
+                "Put the complete code in a markdown Python code block (```python ... ```)."
+            )
         return "\n\n".join(parts)
 
     async def _run_simple(self, instruction: str, max_iterations: int = 10) -> Dict[str, Any]:
         """Simple loop for weak/local models that don't follow tool-calling format."""
         context = await self._retrieve_context(instruction)
-        prompt = self._build_simple_prompt(instruction, context)
+
+        # If the task references an existing file, read it so edits preserve context.
+        path = self._infer_path(instruction)
+        read_result = await self.registry.call("read_file", {"path": path})
+        original_content = read_result.get("content", "")
+        is_edit = bool(original_content)
+
+        prompt = self._build_simple_prompt(instruction, context, original_content, is_edit)
 
         messages: List[Dict[str, str]] = [
             {"role": "system", "content": "You are a helpful coding assistant."},
@@ -137,7 +161,6 @@ class CodingAgent:
                 })
                 continue
 
-            path = self._infer_path(instruction)
             write_result = await self.registry.call(
                 "write_file", {"path": path, "content": code}
             )
@@ -172,7 +195,9 @@ class CodingAgent:
                     f"The code failed when run:\n"
                     f"stdout: {run_result.get('stdout', '')}\n"
                     f"stderr: {run_result.get('stderr', '')}\n"
-                    "Please fix it and provide the corrected code in a fenced code block."
+                    "Here is the original file content:\n"
+                    f"```python\n{original_content}\n```\n\n"
+                    "Please provide the corrected version of the original file in a fenced code block."
                 ),
             })
 

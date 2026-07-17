@@ -15,7 +15,7 @@ class ReadFileTool(Tool):
     }
 
     def __init__(self, workspace: Optional[Path] = None):
-        self.workspace = workspace or Path.cwd().resolve()
+        self.workspace = (workspace or Path.cwd()).resolve()
 
     def _safe_path(self, path: str) -> Path:
         target = (self.workspace / path).resolve()

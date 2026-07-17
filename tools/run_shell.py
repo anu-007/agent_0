@@ -23,7 +23,7 @@ class RunShellTool(Tool):
     }
 
     def __init__(self, workspace: Optional[Path] = None):
-        self.workspace = workspace or Path.cwd().resolve()
+        self.workspace = (workspace or Path.cwd()).resolve()
 
     async def execute(self, cmd: str) -> Dict[str, Any]:
         parts = shlex.split(cmd)
