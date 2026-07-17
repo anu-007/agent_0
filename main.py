@@ -5,6 +5,7 @@ from pathlib import Path
 from agent import CodingAgent
 from dotenv import load_dotenv
 from llm_client import LLMClient
+from planner import Planner
 from retrieval import Embedder, Retriever, sync_index
 from tools import create_default_registry, create_minimal_registry
 from tools.registry import ToolRegistry
@@ -30,7 +31,7 @@ async def interactive(coding_agent):
         if instruction.strip().lower() in {"exit", "quit"}:
             break
         try:
-            response = await coding_agent.synthesize_and_run(instruction)
+            response = await coding_agent.execute_with_plan(instruction)
             print(response)
         except Exception as e:
             print(f"Error: {e}")
@@ -88,8 +89,9 @@ def main():
         else create_default_registry(llm, workspace=workspace)
     )
     retriever = asyncio.run(get_or_build_retriever(workspace))
+    planner = Planner(llm)
     coding_agent = CodingAgent(
-        llm, registry, retriever, workspace=workspace, simple_mode=is_ollama
+        llm, registry, retriever, planner=planner, workspace=workspace, simple_mode=is_ollama
     )
 
     try:

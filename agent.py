@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from llm_client import LLMClient
+from planner import Planner
 from retrieval import Retriever
 from retrieval.retriever import format_context
 from tools import create_default_registry
@@ -17,6 +18,7 @@ class CodingAgent:
         llm: LLMClient,
         registry: Optional[ToolRegistry] = None,
         retriever: Optional[Retriever] = None,
+        planner: Optional[Planner] = None,
         workspace: Optional[Path] = None,
         simple_mode: bool = False,
     ):
@@ -24,6 +26,7 @@ class CodingAgent:
         self.workspace = workspace or Path.cwd().resolve()
         self.registry = registry or create_default_registry(llm, workspace=self.workspace)
         self.retriever = retriever
+        self.planner = planner
         self.simple_mode = simple_mode
         self.system_prompt = self._build_system_prompt()
 
@@ -247,6 +250,32 @@ class CodingAgent:
             "stderr": "",
             "attempts": max_iterations,
         }
+
+    async def execute_with_plan(self, task: str, max_iterations: int = 10) -> Dict[str, Any]:
+        """Generate a plan and execute each subtask in order."""
+        context = await self._retrieve_context(task)
+
+        if self.planner:
+            steps = await self.planner.plan(task, context)
+        else:
+            steps = [task]
+
+        print(f"Plan ({len(steps)} steps):")
+        for i, step in enumerate(steps, start=1):
+            print(f"  {i}. {step}")
+
+        final_result: Dict[str, Any] = {}
+        for i, step in enumerate(steps, start=1):
+            print(f"Executing step {i}/{len(steps)}: {step}")
+            result = await self.synthesize_and_run(step, max_iterations=max_iterations)
+            final_result = result
+            if not result.get("success"):
+                final_result["failed_step"] = step
+                final_result["step_number"] = i
+                print(f"Step {i} failed.")
+                return final_result
+
+        return final_result
 
     async def synthesize_and_run(self, instruction: str, max_iterations: int = 10) -> Dict[str, Any]:
         if self.simple_mode:
