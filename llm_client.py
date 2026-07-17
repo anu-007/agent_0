@@ -21,7 +21,7 @@ class LLMClient:
             max_tokens=max_tokens,
         )
 
-    async def chat(self, messages: List[Dict[str, str]], max_tokens: int = 512) -> str:
+    async def chat(self, messages: List[Dict[str, str]], max_tokens: int = 2048) -> str:
         payload = {
             "model": self.provider,
             "messages": messages,
@@ -47,4 +47,14 @@ class LLMClient:
             data = response.json()
             if "choices" not in data or not data["choices"]:
                 raise ValueError(f"OpenRouter returned no choices: {json.dumps(data)}")
-            return data["choices"][0]["message"]["content"]
+
+            message = data["choices"][0].get("message", {})
+            content = message.get("content")
+            if content is None or content == "":
+                # Some reasoning models return output in the "reasoning" field.
+                content = message.get("reasoning")
+            if content is None or content == "":
+                raise ValueError(
+                    f"OpenRouter returned empty content for model {self.provider}: {json.dumps(data)}"
+                )
+            return content

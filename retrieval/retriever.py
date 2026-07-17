@@ -45,12 +45,57 @@ async def load_index(
     return store
 
 
+def format_context(
+    results: List[Dict],
+    max_chars: int = 8000,
+    max_chunks: int = 15,
+) -> str:
+    """Format retrieved chunks into a prompt string with budget and deduplication."""
+    parts = ["Relevant codebase context:"]
+    seen = set()
+    used = 0
+
+    for result in results[:max_chunks]:
+        key = (
+            f"{result['path']}:{result.get('start_line', 0)}-"
+            f"{result.get('end_line', 0)}:{result.get('name', '')}"
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+
+        header = (
+            f"\nFile: {result['path']}"
+        )
+        if result.get("name"):
+            header += f" ({result['type']}: {result['name']}, lines {result.get('start_line', 0)}-{result.get('end_line', 0)})"
+        else:
+            header += f" (module, lines {result.get('start_line', 0)}-{result.get('end_line', 0)})"
+        header += "\n```python\n"
+
+        content = result["content"]
+        footer = "\n```\n"
+        total = len(header) + len(content) + len(footer)
+
+        if used + total > max_chars:
+            remaining = max_chars - used
+            if remaining > len(header) + len(footer) + 100:
+                content = content[: remaining - len(header) - len(footer)]
+                parts.append(header + content + footer)
+            break
+
+        parts.append(header + content + footer)
+        used += total
+
+    return "\n".join(parts)
+
+
 class Retriever:
     def __init__(self, store: VectorStore, embedder: Embedder):
         self.store = store
         self.embedder = embedder
 
-    async def retrieve(self, query: str, k: int = 5) -> List[Dict]:
+    async def retrieve(self, query: str, k: int = 8) -> List[Dict]:
         loop = asyncio.get_running_loop()
         embedding = await loop.run_in_executor(
             None, self.embedder.encode, [f"{query}\n"]

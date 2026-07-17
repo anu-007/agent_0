@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import List, Dict
+from retrieval.chunker import chunk_file
 
 
 DEFAULT_SKIP_DIRS = {
@@ -20,7 +21,7 @@ def should_skip(path: Path) -> bool:
 
 
 def scan_codebase(root: Path = None, glob: str = "**/*.py") -> List[Dict]:
-    """Scan Python files under root and return one chunk per file."""
+    """Scan Python files under root and return logical AST chunks."""
     root = root or Path.cwd()
     chunks = []
 
@@ -34,8 +35,8 @@ def scan_codebase(root: Path = None, glob: str = "**/*.py") -> List[Dict]:
         if not content.strip():
             continue
 
-        chunks.append({
-            "path": str(path.relative_to(root)),
-            "content": content,
-        })
+        rel_path = str(path.relative_to(root))
+        for chunk in chunk_file(path, content):
+            chunk["path"] = rel_path
+            chunks.append(chunk)
     return chunks

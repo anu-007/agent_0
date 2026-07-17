@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 from llm_client import LLMClient
 from retrieval import Retriever
+from retrieval.retriever import format_context
 from tools import create_default_registry
 from tools.registry import ToolRegistry
 from helpers.tool_parser import parse_tool_call
@@ -43,16 +44,12 @@ class CodingAgent:
         if not self.retriever:
             return ""
         try:
-            results = await self.retriever.retrieve(instruction, k=5)
+            results = await self.retriever.retrieve(instruction, k=8)
         except Exception as e:
             return f"[Could not retrieve context: {e}]"
         if not results:
             return ""
-        parts = ["Relevant codebase context:"]
-        for r in results:
-            content = r.get("content", "")[:3000]
-            parts.append(f"\nFile: {r['path']}\n```python\n{content}\n```")
-        return "\n".join(parts)
+        return format_context(results, max_chars=8000, max_chunks=15)
 
     async def run(self, instruction: str, max_iterations: int = 10) -> Dict[str, Any]:
         context = await self._retrieve_context(instruction)
