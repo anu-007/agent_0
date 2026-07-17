@@ -30,3 +30,18 @@ def create_default_registry(
     registry.register(SearchCodebaseTool(workspace))
     registry.register(FinalAnswerTool())
     return registry
+
+
+def create_minimal_registry(
+    llm: LLMClient,
+    workspace: Optional[Path] = None,
+) -> ToolRegistry:
+    """Minimal registry for local/weak models that struggle with many tools."""
+    workspace = workspace or Path.cwd()
+    registry = ToolRegistry()
+    registry.register(GenerateCodeTool(llm))
+    registry.register(RepairCodeTool(llm))
+    registry.register(RunTestsTool(run_python_code))
+    registry.register(WriteFileTool(workspace))
+    registry.register(FinalAnswerTool())
+    return registry

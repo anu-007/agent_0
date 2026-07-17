@@ -34,6 +34,13 @@ def parse_tool_call(raw: str) -> Dict[str, Any]:
     if "tool" not in data:
         return {"error": "Tool call must contain a 'tool' field"}
 
+    tool_name = data["tool"]
+    if isinstance(tool_name, dict):
+        # Some models emit {"tool": {"name": "..."}} instead of {"tool": "..."}.
+        tool_name = tool_name.get("name") or tool_name.get("tool")
+    if not isinstance(tool_name, str):
+        return {"error": "'tool' must be a string"}
+
     args = data.get("args", {})
     if args is None:
         args = {}
@@ -41,7 +48,7 @@ def parse_tool_call(raw: str) -> Dict[str, Any]:
         return {"error": "'args' must be a JSON object"}
 
     return {
-        "tool": data["tool"],
+        "tool": tool_name,
         "args": args,
         "thought": data.get("thought", ""),
     }
