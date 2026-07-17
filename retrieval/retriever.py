@@ -2,8 +2,10 @@ import asyncio
 from pathlib import Path
 from typing import List, Dict
 
+from retrieval.chunker import chunk_file
 from retrieval.embedder import Embedder
-from retrieval.indexer import scan_codebase
+from retrieval.indexer import scan_codebase, scan_files_with_hashes
+from retrieval.manifest import Manifest
 from retrieval.store import VectorStore
 
 
@@ -42,6 +44,113 @@ async def load_index(
         raise RuntimeError(f"Index not found at {index_dir}. Build it first.")
     store = VectorStore(0)
     store.load(index_dir)
+    return store
+
+
+async def sync_index(
+    root: Path = None,
+    index_dir: Path = DEFAULT_INDEX_DIR,
+    embedder: Embedder = None,
+) -> VectorStore:
+    """Update the index incrementally: re-embed only changed files.
+
+    Args:
+        root: Workspace root to scan.
+        index_dir: Directory where the index, chunks, and manifest are stored.
+        embedder: Embedder instance (created if None).
+
+    Returns:
+        A VectorStore with the up-to-date index.
+    """
+    embedder = embedder or Embedder()
+    loop = asyncio.get_running_loop()
+    dim = embedder.model.get_embedding_dimension()
+
+    root = root or Path.cwd()
+    index_dir = Path(index_dir)
+    index_dir.mkdir(parents=True, exist_ok=True)
+
+    manifest = Manifest(index_dir / "manifest.json").load()
+    current_hashes = scan_files_with_hashes(root)
+
+    index_file = index_dir / "index.faiss"
+    chunks_file = index_dir / "chunks.json"
+
+    old_chunks: List[Dict] = []
+    if index_file.exists() and chunks_file.exists():
+        try:
+            store = VectorStore(dim)
+            store.load(index_dir)
+            old_chunks = store.chunks
+            # Old format without stored embeddings -> force full rebuild.
+            if old_chunks and "embedding" not in old_chunks[0]:
+                print("Old index format detected; rebuilding.")
+                old_chunks = []
+                manifest = Manifest(index_dir / "manifest.json")
+        except Exception as e:
+            print(f"Could not load existing index: {e}. Rebuilding.")
+            old_chunks = []
+            manifest = Manifest(index_dir / "manifest.json")
+
+    added, changed, deleted = manifest.diff(current_hashes)
+
+    # If no files were ever indexed, treat everything as added.
+    if not manifest.hashes:
+        added = set(current_hashes.keys())
+        changed = set()
+        deleted = set()
+
+    if not added and not changed and not deleted:
+        print("Index is up to date.")
+        if index_file.exists() and chunks_file.exists():
+            try:
+                store = VectorStore(dim)
+                store.load(index_dir)
+                return store
+            except Exception:
+                pass
+        return VectorStore(dim)
+
+    print(
+        f"Index sync: {len(added)} added, {len(changed)} changed, {len(deleted)} deleted"
+    )
+
+    # Remove chunks for deleted or changed files.
+    to_remove = list(deleted | changed)
+    old_chunks = [c for c in old_chunks if c["path"] not in to_remove]
+
+    # Chunk and embed added or changed files.
+    files_to_embed = list(added | changed)
+    new_chunks: List[Dict] = []
+    texts: List[str] = []
+    for rel_path in files_to_embed:
+        path = root / rel_path
+        try:
+            content = path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        if not content.strip():
+            continue
+        chunks = chunk_file(path, content)
+        for chunk in chunks:
+            chunk["path"] = rel_path
+            new_chunks.append(chunk)
+            texts.append(f"{chunk['path']}\n{chunk['content']}")
+
+    if texts:
+        embeddings = await loop.run_in_executor(None, embedder.encode, texts)
+        for chunk, embedding in zip(new_chunks, embeddings):
+            chunk["embedding"] = embedding.tolist()
+
+    all_chunks = old_chunks + new_chunks
+
+    store = VectorStore(dim)
+    store.build_from_chunks(all_chunks)
+
+    manifest.update(current_hashes)
+    manifest.save()
+    store.save(index_dir)
+
     return store
 
 

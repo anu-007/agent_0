@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 from typing import List, Dict
 from retrieval.chunker import chunk_file
@@ -18,6 +19,23 @@ DEFAULT_SKIP_DIRS = {
 
 def should_skip(path: Path) -> bool:
     return any(part in DEFAULT_SKIP_DIRS for part in path.parts)
+
+
+def file_hash(path: Path) -> str:
+    """Return a SHA-256 hash of the file content."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def scan_files_with_hashes(root: Path = None, glob: str = "**/*.py") -> Dict[str, str]:
+    """Scan Python files and return a map of relative path -> content hash."""
+    root = root or Path.cwd()
+    manifest: Dict[str, str] = {}
+    for path in root.rglob(glob):
+        if should_skip(path):
+            continue
+        rel = str(path.relative_to(root))
+        manifest[rel] = file_hash(path)
+    return manifest
 
 
 def scan_codebase(root: Path = None, glob: str = "**/*.py") -> List[Dict]:

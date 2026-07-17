@@ -6,7 +6,7 @@ import faiss
 
 
 class VectorStore:
-    """FAISS-backed vector store with chunk metadata."""
+    """FAISS-backed vector store with chunk metadata and cached embeddings."""
 
     def __init__(self, dim: int):
         self.dim = dim
@@ -18,7 +18,32 @@ class VectorStore:
         embeddings = np.asarray(embeddings, dtype=np.float32)
         faiss.normalize_L2(embeddings)
         self.index.add(embeddings)
-        self.chunks.extend(chunks)
+        for chunk, embedding in zip(chunks, embeddings):
+            chunk_copy = chunk.copy()
+            chunk_copy["embedding"] = embedding.tolist()
+            self.chunks.append(chunk_copy)
+
+    def build_from_chunks(self, chunks: List[Dict]):
+        """Rebuild the FAISS index from existing chunks that already have embeddings."""
+        self.chunks = [c.copy() for c in chunks]
+        if not self.chunks:
+            return
+        embeddings = np.asarray(
+            [c["embedding"] for c in self.chunks], dtype=np.float32
+        )
+        faiss.normalize_L2(embeddings)
+        self.index.add(embeddings)
+
+    def remove_by_path(self, paths: List[str]):
+        """Remove all chunks belonging to the given file paths."""
+        self.chunks = [c for c in self.chunks if c["path"] not in paths]
+        self.index.reset()
+        if self.chunks:
+            embeddings = np.asarray(
+                [c["embedding"] for c in self.chunks], dtype=np.float32
+            )
+            faiss.normalize_L2(embeddings)
+            self.index.add(embeddings)
 
     def search(self, query_embedding: np.ndarray, k: int = 5) -> List[Dict]:
         """Return the top-k most similar chunks."""

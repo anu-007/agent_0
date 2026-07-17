@@ -5,7 +5,7 @@ from pathlib import Path
 from agent import CodingAgent
 from dotenv import load_dotenv
 from llm_client import LLMClient
-from retrieval import Embedder, Retriever, build_index, load_index
+from retrieval import Embedder, Retriever, sync_index
 from tools import create_default_registry
 from tools.registry import ToolRegistry
 
@@ -16,11 +16,7 @@ DEFAULT_WORKSPACE = Path("workspace")
 
 async def get_or_build_retriever(workspace: Path):
     index_dir = workspace / ".agent0_index"
-    try:
-        store = await load_index(index_dir)
-    except RuntimeError:
-        print(f"Building index for {workspace} ...")
-        store = await build_index(root=workspace, index_dir=index_dir)
+    store = await sync_index(root=workspace, index_dir=index_dir)
     return Retriever(store, Embedder())
 
 
