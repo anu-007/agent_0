@@ -4,9 +4,19 @@ import os
 from agent import CodingAgent
 from dotenv import load_dotenv
 from llm_client import LLMClient
+from retrieval import Embedder, Retriever, build_index, load_index
 from tools import create_default_registry
 
 load_dotenv()
+
+
+async def get_or_build_retriever():
+    try:
+        store = await load_index()
+    except RuntimeError:
+        print("Building codebase index for the first time...")
+        store = await build_index()
+    return Retriever(store, Embedder())
 
 
 async def interactive(coding_agent):
@@ -39,7 +49,8 @@ def main():
 
     llm = LLMClient(provider=provider, api_key=api_key)
     registry = create_default_registry(llm)
-    coding_agent = CodingAgent(llm, registry)
+    retriever = asyncio.run(get_or_build_retriever())
+    coding_agent = CodingAgent(llm, registry, retriever)
 
     try:
         asyncio.run(interactive(coding_agent))

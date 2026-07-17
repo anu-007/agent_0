@@ -1,15 +1,22 @@
 import json
 from typing import Any, Dict, List, Optional
 from llm_client import LLMClient
+from retrieval import Retriever
 from tools import create_default_registry
 from tools.registry import ToolRegistry
 from helpers.tool_parser import parse_tool_call
 
 
 class CodingAgent:
-    def __init__(self, llm: LLMClient, registry: Optional[ToolRegistry] = None):
+    def __init__(
+        self,
+        llm: LLMClient,
+        registry: Optional[ToolRegistry] = None,
+        retriever: Optional[Retriever] = None,
+    ):
         self.llm = llm
         self.registry = registry or create_default_registry(llm)
+        self.retriever = retriever
         self.system_prompt = self._build_system_prompt()
 
     def _build_system_prompt(self) -> str:
@@ -24,10 +31,30 @@ class CodingAgent:
             "If a test run fails, use the `repair_code` tool to fix it."
         )
 
+    async def _retrieve_context(self, instruction: str) -> str:
+        if not self.retriever:
+            return ""
+        try:
+            results = await self.retriever.retrieve(instruction, k=5)
+        except Exception as e:
+            return f"[Could not retrieve context: {e}]"
+        if not results:
+            return ""
+        parts = ["Relevant codebase context:"]
+        for r in results:
+            content = r.get("content", "")[:3000]
+            parts.append(f"\nFile: {r['path']}\n```python\n{content}\n```")
+        return "\n".join(parts)
+
     async def run(self, instruction: str, max_iterations: int = 10) -> Dict[str, Any]:
+        context = await self._retrieve_context(instruction)
+        user_message = instruction
+        if context:
+            user_message = f"{context}\n\nTask: {instruction}"
+
         messages: List[Dict[str, str]] = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": instruction},
+            {"role": "user", "content": user_message},
         ]
 
         for iteration in range(max_iterations):
