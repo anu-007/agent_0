@@ -1,21 +1,26 @@
 import argparse
 import asyncio
 import os
+from pathlib import Path
 from agent import CodingAgent
 from dotenv import load_dotenv
 from llm_client import LLMClient
 from retrieval import Embedder, Retriever, build_index, load_index
 from tools import create_default_registry
+from tools.registry import ToolRegistry
 
 load_dotenv()
 
+DEFAULT_WORKSPACE = Path("workspace")
 
-async def get_or_build_retriever():
+
+async def get_or_build_retriever(workspace: Path):
+    index_dir = workspace / ".agent0_index"
     try:
-        store = await load_index()
+        store = await load_index(index_dir)
     except RuntimeError:
-        print("Building codebase index for the first time...")
-        store = await build_index()
+        print(f"Building index for {workspace} ...")
+        store = await build_index(root=workspace, index_dir=index_dir)
     return Retriever(store, Embedder())
 
 
@@ -37,20 +42,42 @@ async def interactive(coding_agent):
 
 def main():
     parser = argparse.ArgumentParser(description="Agent 0, an intern coding agent")
-    parser.add_argument('--provider', type=str, default="tencent/hy3:free", help="llm model")
-    parser.add_argument('--key', type=str, default=None, help='api key for the llm')
+    parser.add_argument(
+        "--workspace",
+        type=str,
+        default=str(DEFAULT_WORKSPACE),
+        help="Target folder for indexing, generation, and editing (default: workspace)",
+    )
+    parser.add_argument(
+        "--provider",
+        type=str,
+        default=os.environ.get("LLM_PROVIDER"),
+        help="LLM model (default: LLM_PROVIDER from .env)",
+    )
+    parser.add_argument(
+        "--key",
+        type=str,
+        default=os.environ.get("LLM_API_KEY"),
+        help="API key for the LLM (default: LLM_API_KEY from .env)",
+    )
     args = parser.parse_args()
 
-    provider = args.provider or os.environ.get("LLM_PROVIDER", "tencent/hy3:free")
-    api_key = args.key or os.environ.get("LLM_API_KEY")
+    workspace = Path(args.workspace).resolve()
+    workspace.mkdir(parents=True, exist_ok=True)
 
-    if not api_key:
-        raise AttributeError("ERROR: API key not found, Use --key, LLM_API_KEY env var")
+    if not args.key:
+        raise AttributeError(
+            "ERROR: API key not found. Set LLM_API_KEY in .env or pass --key."
+        )
+    if not args.provider:
+        raise AttributeError(
+            "ERROR: LLM provider not found. Set LLM_PROVIDER in .env or pass --provider."
+        )
 
-    llm = LLMClient(provider=provider, api_key=api_key)
-    registry = create_default_registry(llm)
-    retriever = asyncio.run(get_or_build_retriever())
-    coding_agent = CodingAgent(llm, registry, retriever)
+    llm = LLMClient(provider=args.provider, api_key=args.key)
+    registry = create_default_registry(llm, workspace=workspace)
+    retriever = asyncio.run(get_or_build_retriever(workspace))
+    coding_agent = CodingAgent(llm, registry, retriever, workspace=workspace)
 
     try:
         asyncio.run(interactive(coding_agent))

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from tools.base import Tool
 
 
@@ -14,11 +14,13 @@ class SearchCodebaseTool(Tool):
         "required": ["query"],
     }
 
+    def __init__(self, workspace: Optional[Path] = None):
+        self.workspace = workspace or Path.cwd().resolve()
+
     async def execute(self, query: str) -> Dict[str, Any]:
         matches: List[Dict[str, Any]] = []
-        base = Path.cwd()
-        for path in base.rglob("*.py"):
-            if "__pycache__" in path.parts:
+        for path in self.workspace.rglob("*.py"):
+            if "__pycache__" in path.parts or ".venv" in path.parts:
                 continue
             try:
                 text = path.read_text(encoding="utf-8")
@@ -26,7 +28,7 @@ class SearchCodebaseTool(Tool):
                 for i, line in enumerate(lines, start=1):
                     if query in line:
                         matches.append({
-                            "file": str(path.relative_to(base)),
+                            "file": str(path.relative_to(self.workspace)),
                             "line": i,
                             "content": line.strip(),
                         })

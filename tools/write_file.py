@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from tools.base import Tool
 
 
@@ -15,10 +15,12 @@ class WriteFileTool(Tool):
         "required": ["path", "content"],
     }
 
+    def __init__(self, workspace: Optional[Path] = None):
+        self.workspace = workspace or Path.cwd().resolve()
+
     def _safe_path(self, path: str) -> Path:
-        base = Path.cwd().resolve()
-        target = (base / path).resolve()
-        if not str(target).startswith(str(base)):
+        target = (self.workspace / path).resolve()
+        if not str(target).startswith(str(self.workspace)):
             raise ValueError("Path outside workspace")
         return target
 
